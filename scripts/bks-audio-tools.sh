@@ -7,18 +7,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_common.sh"
 # --- end bootstrap ---
 
-# --- BKS quotes — add your own and rebuild ---
-QUOTES=(
-    "Keep it up, you're doing great!"
-)
-QUOTE="${QUOTES[$((RANDOM % ${#QUOTES[@]}))]}"
-
 for f in "$@"; do
     FILENAME=$(basename "$f")
     DIR=$(dirname "$f")
     NAME="${FILENAME%.*}"
     EXT="${FILENAME##*.}"
     EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+
+    # --- Show scanning notification immediately ---
+    osascript -e "display notification \"Analyzing ${FILENAME}...\" with title \"Beat Kitchen Audio Tools\"" 2>/dev/null
 
     # --- Run ebur128 analysis ---
     RAW=$("$FFMPEG" -i "$f" -af ebur128=peak=true -f null - 2>&1)
@@ -67,15 +64,29 @@ True Peak              ${TRUE_PEAK} dBTP
 Loudness Range         ${LRA} LU
 Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}
 
-\"${QUOTE}\"
 — beatkitchen.io/tools"
 
     # --- Main dialog loop ---
     while true; do
         ESCAPED=$(echo "$REPORT" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
+        # Build button list — conversions are context-aware
+        CAN_MP3=0; CAN_MONO=0
+        if [ "$EXT_LOWER" != "mp3" ]; then CAN_MP3=1; fi
+        if [ "$CHANNELS" = "stereo" ] || [ "$CHANNELS" = "5.1" ] || [ "$CHANNELS" = "7.1" ]; then CAN_MONO=1; fi
+
+        if [ $CAN_MP3 -eq 1 ] && [ $CAN_MONO -eq 1 ]; then
+            BUTTONS='{"Copy Report", "Convert...", "Done"}'
+        elif [ $CAN_MP3 -eq 1 ]; then
+            BUTTONS='{"Copy Report", "MP3", "Done"}'
+        elif [ $CAN_MONO -eq 1 ]; then
+            BUTTONS='{"Copy Report", "Mono", "Done"}'
+        else
+            BUTTONS='{"Copy Report", "Done"}'
+        fi
+
         RESULT=$(osascript <<APPLESCRIPT
-set theResult to display dialog "${ESCAPED}" buttons {"Copy Report", "More...", "Done"} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
+set theResult to display dialog "${ESCAPED}" buttons ${BUTTONS} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
 return button returned of theResult
 APPLESCRIPT
         ) 2>/dev/null
@@ -86,25 +97,30 @@ APPLESCRIPT
                 osascript -e 'display notification "Loudness report copied to clipboard" with title "Beat Kitchen Audio Tools"' 2>/dev/null
                 ;;
 
-            "More...")
-                # Build options list — conversions + utilities
-                ACTIONS=""
-                CAN_MP3=0; CAN_MONO=0
-                if [ "$EXT_LOWER" != "mp3" ]; then
-                    CAN_MP3=1
-                    ACTIONS="${ACTIONS}\"Convert to MP3 (320kbps)\", "
+            "MP3")
+                OUTPUT="${DIR}/${NAME}.mp3"
+                osascript -e 'display notification "Converting to MP3..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
+                if "$FFMPEG" -i "$f" -codec:a libmp3lame -b:a 320k -map a -y "$OUTPUT" 2>/dev/null; then
+                    osascript -e "display notification \"Saved: ${NAME}.mp3\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
+                else
+                    osascript -e 'display dialog "MP3 conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
                 fi
-                if [ "$CHANNELS" = "stereo" ] || [ "$CHANNELS" = "5.1" ] || [ "$CHANNELS" = "7.1" ]; then
-                    CAN_MONO=1
-                    ACTIONS="${ACTIONS}\"Convert to Mono\", "
-                fi
-                if [ $CAN_MP3 -eq 1 ] && [ $CAN_MONO -eq 1 ]; then
-                    ACTIONS="${ACTIONS}\"Both (MP3 + Mono)\", "
-                fi
-                ACTIONS="${ACTIONS}\"Open beatkitchen.io/tools\", \"Uninstall\""
+                ;;
 
+            "Mono")
+                OUTPUT="${DIR}/${NAME}_mono.${EXT}"
+                osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
+                if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
+                    osascript -e "display notification \"Saved: ${NAME}_mono.${EXT}\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
+                else
+                    osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
+                fi
+                ;;
+
+            "Convert...")
+                # Both conversions available — show picker with Both option
                 CHOICE=$(osascript <<APPLESCRIPT2
-set theChoice to choose from list {${ACTIONS}} with title "Beat Kitchen Audio Tools" with prompt "${FILENAME}" OK button name "OK" cancel button name "Back"
+set theChoice to choose from list {"Convert to MP3 (320kbps)", "Convert to Mono", "Both"} with title "Beat Kitchen Audio Tools" with prompt "${FILENAME}" OK button name "Convert" cancel button name "Back"
 if theChoice is false then
     return "CANCEL"
 else
@@ -117,24 +133,10 @@ APPLESCRIPT2
                 case "$CHOICE" in
                     "Convert to MP3 (320kbps)") DO_MP3=1 ;;
                     "Convert to Mono") DO_MONO=1 ;;
-                    "Both (MP3 + Mono)") DO_MP3=1; DO_MONO=1 ;;
-                    "Open beatkitchen.io/tools")
-                        open "https://beatkitchen.io/ear-candy"
-                        continue
-                        ;;
-                    "Uninstall")
-                        CONFIRM=$(osascript -e 'display dialog "Remove Beat Kitchen Audio Tools from your right-click menu?" buttons {"Cancel", "Uninstall"} default button "Cancel" with title "Beat Kitchen Audio Tools" with icon caution' 2>&1)
-                        if echo "$CONFIRM" | grep -q "Uninstall"; then
-                            rm -rf "$HOME/Library/Services/Beat Kitchen Audio Tools.workflow"
-                            osascript -e 'display notification "Beat Kitchen Audio Tools has been uninstalled." with title "Beat Kitchen Audio Tools" sound name "Glass"' 2>/dev/null
-                            exit 0
-                        fi
-                        continue
-                        ;;
+                    "Both") DO_MP3=1; DO_MONO=1 ;;
                     *) continue ;;
                 esac
 
-                # Run conversions
                 CONVERTED=""
                 if [ $DO_MP3 -eq 1 ]; then
                     osascript -e 'display notification "Converting to MP3..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
