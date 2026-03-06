@@ -55,14 +55,35 @@ for f in "$@"; do
     SAMPLE_RATE=$(echo "$AUDIO_INFO" | grep -o '[0-9]* Hz' | head -1)
     CHANNELS=$(echo "$AUDIO_INFO" | grep -o 'stereo\|mono\|5\.1\|7\.1' | head -1)
 
+    # --- Detect correlated mono (dual-mono masquerading as stereo) ---
+    IS_DUAL_MONO=0
+    if [ "$CHANNELS" = "stereo" ]; then
+        # Extract L-R difference, measure its peak level
+        DIFF_PEAK=$("$FFMPEG" -i "$f" -af "pan=1c|c0=c0-c1,astats=metadata=1:reset=0" -f null - 2>&1 \
+            | grep "Peak level" | tail -1 | sed 's/.*Peak level dB: *//')
+        if [ -n "$DIFF_PEAK" ]; then
+            # If L-R difference peak is below -60dB, channels are effectively identical
+            IS_BELOW=$(echo "$DIFF_PEAK" | awk '{print ($1 < -60) ? 1 : 0}')
+            if [ "$IS_BELOW" = "1" ]; then
+                IS_DUAL_MONO=1
+            fi
+        fi
+    fi
+
     # --- Build report ---
+    STEREO_NOTE=""
+    if [ $IS_DUAL_MONO -eq 1 ]; then
+        STEREO_NOTE="
+Note: stereo file contains identical L/R channels (dual mono)"
+    fi
+
     REPORT="${FILENAME}
 ${DURATION}   ${SAMPLE_RATE:-N/A}   ${CHANNELS:-N/A}
 
 Integrated Loudness    ${LUFS} LUFS
 True Peak              ${TRUE_PEAK} dBTP
 Loudness Range         ${LRA} LU
-Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}"
+Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}${STEREO_NOTE}"
 
     # --- Main dialog loop ---
     while true; do
@@ -74,24 +95,20 @@ Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}"
         if [ "$CHANNELS" = "stereo" ] || [ "$CHANNELS" = "5.1" ] || [ "$CHANNELS" = "7.1" ]; then CAN_MONO=1; fi
 
         if [ $CAN_MP3 -eq 1 ] && [ $CAN_MONO -eq 1 ]; then
-            BUTTONS='{"Copy Report", "Convert...", "Done"}'
+            BUTTONS='{"Copy Report", "Conversion Options", "Cancel"}'
         elif [ $CAN_MP3 -eq 1 ]; then
-            BUTTONS='{"Copy Report", "MP3", "Done"}'
+            BUTTONS='{"Copy Report", "MP3", "Cancel"}'
         elif [ $CAN_MONO -eq 1 ]; then
-            BUTTONS='{"Copy Report", "Mono", "Done"}'
+            BUTTONS='{"Copy Report", "Mono", "Cancel"}'
         else
-            BUTTONS='{"Copy Report", "Done"}'
+            BUTTONS='{"Copy Report", "Cancel"}'
         fi
 
-        RESULT=$(osascript <<APPLESCRIPT
-try
-    set theResult to display dialog "${ESCAPED}" buttons ${BUTTONS} default button "Done" cancel button "Done" with title "Beat Kitchen Audio Tools" with icon note
-    return button returned of theResult
-on error number -128
-    return "Done"
-end try
+        RESULT=$(osascript 2>/dev/null <<APPLESCRIPT
+display dialog "${ESCAPED}" buttons ${BUTTONS} default button "Cancel" with title "Beat Kitchen Audio Tools" with icon note
+return button returned of result
 APPLESCRIPT
-        ) 2>/dev/null
+        ) || RESULT=""
 
         case "$RESULT" in
             "Copy Report")
@@ -112,28 +129,31 @@ APPLESCRIPT
             "Mono")
                 OUTPUT="${DIR}/${NAME}_mono.${EXT}"
                 osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
-                if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
+                if [ $IS_DUAL_MONO -eq 1 ]; then
+                    # Dual mono — extract left channel (no level change, no clipping)
+                    MONO_OK=$("$FFMPEG" -i "$f" -af "pan=1c|c0=c0" -y "$OUTPUT" 2>/dev/null && echo 1)
+                else
+                    # True stereo — standard downmix
+                    MONO_OK=$("$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null && echo 1)
+                fi
+                if [ "$MONO_OK" = "1" ]; then
                     osascript -e "display notification \"Saved: ${NAME}_mono.${EXT}\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
                 else
                     osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
                 fi
                 ;;
 
-            "Convert...")
+            "Conversion Options")
                 # Both conversions available — show picker
-                CHOICE=$(osascript <<APPLESCRIPT2
-try
-    set theChoice to choose from list {"Convert to MP3 (320kbps)", "Convert to Mono", "Both"} with title "Conversion Options" with prompt "${FILENAME}" OK button name "Convert" cancel button name "Cancel"
-    if theChoice is false then
-        return "CANCEL"
-    else
-        return item 1 of theChoice
-    end if
-on error number -128
+                CHOICE=$(osascript 2>/dev/null <<APPLESCRIPT2
+set theChoice to choose from list {"Convert to MP3 (320kbps)", "Convert to Mono", "Both"} with title "Conversion Options" with prompt "${FILENAME}" OK button name "Convert" cancel button name "Cancel"
+if theChoice is false then
     return "CANCEL"
-end try
+else
+    return item 1 of theChoice
+end if
 APPLESCRIPT2
-                ) 2>/dev/null
+                ) || CHOICE="CANCEL"
 
                 DO_MP3=0; DO_MONO=0
                 case "$CHOICE" in
@@ -156,7 +176,12 @@ APPLESCRIPT2
                 if [ $DO_MONO -eq 1 ]; then
                     osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
                     OUTPUT="${DIR}/${NAME}_mono.${EXT}"
-                    if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
+                    if [ $IS_DUAL_MONO -eq 1 ]; then
+                        MONO_OK=$("$FFMPEG" -i "$f" -af "pan=1c|c0=c0" -y "$OUTPUT" 2>/dev/null && echo 1)
+                    else
+                        MONO_OK=$("$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null && echo 1)
+                    fi
+                    if [ "$MONO_OK" = "1" ]; then
                         CONVERTED="${CONVERTED}${NAME}_mono.${EXT}"
                     else
                         osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
@@ -167,7 +192,7 @@ APPLESCRIPT2
                 fi
                 ;;
 
-            "Done"|"")
+            *)
                 break
                 ;;
         esac
