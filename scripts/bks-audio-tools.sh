@@ -62,9 +62,7 @@ ${DURATION}   ${SAMPLE_RATE:-N/A}   ${CHANNELS:-N/A}
 Integrated Loudness    ${LUFS} LUFS
 True Peak              ${TRUE_PEAK} dBTP
 Loudness Range         ${LRA} LU
-Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}
-
-— beatkitchen.io/tools"
+Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}"
 
     # --- Main dialog loop ---
     while true; do
@@ -86,8 +84,12 @@ Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}
         fi
 
         RESULT=$(osascript <<APPLESCRIPT
-set theResult to display dialog "${ESCAPED}" buttons ${BUTTONS} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
-return button returned of theResult
+try
+    set theResult to display dialog "${ESCAPED}" buttons ${BUTTONS} default button "Done" cancel button "Done" with title "Beat Kitchen Audio Tools" with icon note
+    return button returned of theResult
+on error number -128
+    return "Done"
+end try
 APPLESCRIPT
         ) 2>/dev/null
 
@@ -118,14 +120,18 @@ APPLESCRIPT
                 ;;
 
             "Convert...")
-                # Both conversions available — show picker with Both option
+                # Both conversions available — show picker
                 CHOICE=$(osascript <<APPLESCRIPT2
-set theChoice to choose from list {"Convert to MP3 (320kbps)", "Convert to Mono", "Both"} with title "Beat Kitchen Audio Tools" with prompt "${FILENAME}" OK button name "Convert" cancel button name "Back"
-if theChoice is false then
+try
+    set theChoice to choose from list {"Convert to MP3 (320kbps)", "Convert to Mono", "Both"} with title "Conversion Options" with prompt "${FILENAME}" OK button name "Convert" cancel button name "Cancel"
+    if theChoice is false then
+        return "CANCEL"
+    else
+        return item 1 of theChoice
+    end if
+on error number -128
     return "CANCEL"
-else
-    return item 1 of theChoice
-end if
+end try
 APPLESCRIPT2
                 ) 2>/dev/null
 
