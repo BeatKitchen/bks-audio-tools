@@ -1,5 +1,5 @@
 #!/bin/bash
-# BKS Audio Tools — shared ffmpeg bootstrap
+# Beat Kitchen Audio Tools — shared ffmpeg bootstrap
 # Finds ffmpeg or downloads a static binary automatically
 
 BKS_TOOLS_DIR="$HOME/.bks-audio-tools"
@@ -23,7 +23,7 @@ fi
 
 # If still not found, offer to download
 if [ -z "$FFMPEG" ]; then
-    RESPONSE=$(osascript -e 'display dialog "ffmpeg is required but not installed.\n\nDownload it now? (~80 MB, takes about 30 seconds)" buttons {"Cancel", "Download"} default button "Download" with title "BKS Audio Tools" with icon caution' 2>&1)
+    RESPONSE=$(osascript -e 'display dialog "ffmpeg is required but not installed.\n\nDownload it now? (~80 MB, takes about 30 seconds)" buttons {"Cancel", "Download"} default button "Download" with title "Beat Kitchen Audio Tools" with icon caution' 2>&1)
 
     if ! echo "$RESPONSE" | grep -q "Download"; then
         exit 0
@@ -33,7 +33,7 @@ if [ -z "$FFMPEG" ]; then
     ARCH=$(uname -m)
     mkdir -p "$BKS_TOOLS_DIR"
 
-    osascript -e 'display notification "Downloading ffmpeg..." with title "BKS Audio Tools"' 2>/dev/null
+    osascript -e 'display notification "Downloading ffmpeg..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
 
     if [ "$ARCH" = "arm64" ]; then
         DOWNLOAD_URL="https://www.osxexperts.net/ffmpeg7arm.zip"
@@ -54,9 +54,9 @@ if [ -z "$FFMPEG" ]; then
     if [ -f "$BKS_TOOLS_DIR/ffmpeg" ]; then
         chmod +x "$BKS_TOOLS_DIR/ffmpeg"
         FFMPEG="$BKS_TOOLS_DIR/ffmpeg"
-        osascript -e 'display notification "ffmpeg installed successfully!" with title "BKS Audio Tools" sound name "Glass"' 2>/dev/null
+        osascript -e 'display notification "ffmpeg installed successfully!" with title "Beat Kitchen Audio Tools" sound name "Glass"' 2>/dev/null
     else
-        osascript -e 'display dialog "Failed to download ffmpeg.\n\nYou can install it manually:\n1. Install Homebrew: https://brew.sh\n2. Run: brew install ffmpeg" buttons {"OK"} default button "OK" with title "BKS Audio Tools" with icon stop' 2>&1
+        osascript -e 'display dialog "Failed to download ffmpeg.\n\nYou can install it manually:\n1. Install Homebrew: https://brew.sh\n2. Run: brew install ffmpeg" buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon stop' 2>&1
         exit 1
     fi
 fi

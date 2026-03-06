@@ -8,8 +8,8 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 SERVICES_DIR="$HOME/Library/Services"
 
 echo ""
-echo "BKS Audio Quick Actions — Installer"
-echo "===================================="
+echo "Beat Kitchen Audio Tools — Installer"
+echo "====================================="
 echo ""
 
 # Check if dist/ has workflows

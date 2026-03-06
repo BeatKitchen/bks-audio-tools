@@ -301,28 +301,84 @@ WFLOW
     echo "  Built: ${WNAME}.workflow"
 }
 
+WFNAME="Beat Kitchen Audio Tools"
+
 # Build the unified workflow
-create_workflow "BKS Audio Tools" \
+create_workflow "$WFNAME" \
     "${SCRIPTS_DIR}/bks-audio-tools.sh" \
     "BKS0A000-1111-4000-A000-000000000001" \
     "BKS0A000-2222-4000-A000-000000000002" \
     "BKS0A000-3333-4000-A000-000000000003"
 
+# Apply custom icon to the workflow bundle if icon exists
+ICON_SRC="${SCRIPT_DIR}/assets/icon.png"
+if [ -f "$ICON_SRC" ]; then
+    ICONSET=$(mktemp -d)/icon.iconset
+    mkdir -p "$ICONSET"
+    for size in 16 32 128 256 512; do
+        sips -z $size $size "$ICON_SRC" --out "$ICONSET/icon_${size}x${size}.png" > /dev/null 2>&1
+    done
+    for size in 16 32 128 256; do
+        double=$((size * 2))
+        sips -z $double $double "$ICON_SRC" --out "$ICONSET/icon_${size}x${size}@2x.png" > /dev/null 2>&1
+    done
+    ICNS_FILE="${DIST_DIR}/icon.icns"
+    iconutil -c icns "$ICONSET" -o "$ICNS_FILE" 2>/dev/null
+
+    if [ -f "$ICNS_FILE" ]; then
+        # Set custom Finder icon on the .workflow bundle
+        python3 - "$ICNS_FILE" "${DIST_DIR}/${WFNAME}.workflow" << 'PYICON'
+import sys, os
+try:
+    from AppKit import NSWorkspace, NSImage
+    icon_path = sys.argv[1]
+    target_path = sys.argv[2]
+    image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+    if image:
+        NSWorkspace.sharedWorkspace().setIcon_forFile_options_(image, target_path, 0)
+except Exception:
+    pass
+PYICON
+        rm -f "$ICNS_FILE"
+        echo "  Applied custom icon"
+    fi
+    rm -rf "$(dirname "$ICONSET")"
+fi
+
 # Package as zip
-ZIPFILE="${DIST_DIR}/BKS-Audio-Tools.zip"
+ZIPFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.zip"
 cd "$DIST_DIR"
-zip -r -q "$ZIPFILE" "BKS Audio Tools.workflow"
+zip -r -q "$ZIPFILE" "${WFNAME}.workflow"
 cd "$SCRIPT_DIR"
 
-# Package as branded DMG
-DMGFILE="${DIST_DIR}/BKS-Audio-Tools.dmg"
+# Package as branded DMG with README
+DMGFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.dmg"
 DMGTMP="${DIST_DIR}/dmg-staging"
 rm -rf "$DMGTMP" "$DMGFILE"
 mkdir -p "$DMGTMP"
-cp -R "${DIST_DIR}/BKS Audio Tools.workflow" "$DMGTMP/"
+cp -R "${DIST_DIR}/${WFNAME}.workflow" "$DMGTMP/"
+
+cat > "$DMGTMP/How to Install.txt" << 'READMETXT'
+Beat Kitchen Audio Tools
+========================
+
+Double-click "Beat Kitchen Audio Tools.workflow" to install.
+
+macOS will ask if you want to install it as a Quick Action.
+Click "Install" and you're done.
+
+Usage: right-click any audio or video file in Finder,
+go to Services (or Quick Actions), and select
+"Beat Kitchen Audio Tools".
+
+ffmpeg is downloaded automatically on first use
+if you don't already have it.
+
+beatkitchen.io
+READMETXT
 
 # Create the DMG
-hdiutil create -volname "BKS Audio Tools" \
+hdiutil create -volname "Beat Kitchen Audio Tools" \
     -srcfolder "$DMGTMP" \
     -ov -format UDZO \
     "$DMGFILE" > /dev/null 2>&1
@@ -331,10 +387,10 @@ rm -rf "$DMGTMP"
 
 echo ""
 echo "Done."
-echo "  Workflow: dist/BKS Audio Tools.workflow"
-echo "  Zip:     dist/BKS-Audio-Tools.zip ($(du -h "$ZIPFILE" | awk '{print $1}'))"
+echo "  Workflow: dist/${WFNAME}.workflow"
+echo "  Zip:     dist/Beat-Kitchen-Audio-Tools.zip ($(du -h "$ZIPFILE" | awk '{print $1}'))"
 if [ -f "$DMGFILE" ]; then
-    echo "  DMG:     dist/BKS-Audio-Tools.dmg ($(du -h "$DMGFILE" | awk '{print $1}'))"
+    echo "  DMG:     dist/Beat-Kitchen-Audio-Tools.dmg ($(du -h "$DMGFILE" | awk '{print $1}'))"
 fi
 echo ""
 echo "Upload either package to beatkitchen.io/tools"

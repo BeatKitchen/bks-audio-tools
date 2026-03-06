@@ -1,5 +1,5 @@
 #!/bin/bash
-# BKS Audio Tools — Unified right-click audio analyzer + converter
+# Beat Kitchen Audio Tools — Unified right-click audio analyzer + converter
 # Shows loudness analysis, then offers conversion options
 
 # --- ffmpeg bootstrap (replaced by build.sh with _common.sh contents) ---
@@ -36,7 +36,7 @@ for f in "$@"; do
 
     # Check for audio stream
     if ! echo "$RAW" | grep -q "Integrated loudness:"; then
-        osascript -e "display dialog \"No audio stream found in:\\n${FILENAME}\" buttons {\"OK\"} default button \"OK\" with title \"BKS Audio Tools\" with icon stop"
+        osascript -e "display dialog \"No audio stream found in:\\n${FILENAME}\" buttons {\"OK\"} default button \"OK\" with title \"Beat Kitchen Audio Tools\" with icon stop"
         continue
     fi
 
@@ -86,7 +86,7 @@ Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}
         ESCAPED=$(echo "$REPORT" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         RESULT=$(osascript <<APPLESCRIPT
-set theResult to display dialog "${ESCAPED}" buttons {"Copy", "Convert...", "Done"} default button "Done" with title "BKS Audio Tools" with icon note
+set theResult to display dialog "${ESCAPED}" buttons {"Copy", "Convert...", "Done"} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
 return button returned of theResult
 APPLESCRIPT
         ) 2>/dev/null
@@ -94,7 +94,7 @@ APPLESCRIPT
         case "$RESULT" in
             "Copy")
                 echo "$REPORT" | pbcopy
-                osascript -e 'display notification "Results copied to clipboard" with title "BKS Audio Tools"' 2>/dev/null
+                osascript -e 'display notification "Results copied to clipboard" with title "Beat Kitchen Audio Tools"' 2>/dev/null
                 ;;
 
             "Convert...")
@@ -108,7 +108,7 @@ APPLESCRIPT
                 fi
 
                 if [ -z "$ACTIONS" ]; then
-                    osascript -e 'display dialog "No conversions available for this file." buttons {"OK"} default button "OK" with title "BKS Audio Tools"' 2>/dev/null
+                    osascript -e 'display dialog "No conversions available for this file." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools"' 2>/dev/null
                     continue
                 fi
 
@@ -116,7 +116,7 @@ APPLESCRIPT
                 ACTIONS=$(echo "$ACTIONS" | sed 's/, $//')
 
                 CHOICE=$(osascript <<APPLESCRIPT2
-set theChoice to choose from list {${ACTIONS}} with title "BKS Audio Tools" with prompt "Select a conversion for:
+set theChoice to choose from list {${ACTIONS}} with title "Beat Kitchen Audio Tools" with prompt "Select a conversion for:
 ${FILENAME}" OK button name "Convert" cancel button name "Back"
 if theChoice is false then
     return "CANCEL"
@@ -129,21 +129,21 @@ APPLESCRIPT2
                 case "$CHOICE" in
                     "Convert to MP3 (320kbps)")
                         OUTPUT="${DIR}/${NAME}.mp3"
-                        osascript -e 'display notification "Converting to MP3..." with title "BKS Audio Tools"' 2>/dev/null
+                        osascript -e 'display notification "Converting to MP3..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
                         if "$FFMPEG" -i "$f" -codec:a libmp3lame -b:a 320k -map a -y "$OUTPUT" 2>/dev/null; then
-                            osascript -e "display notification \"Saved: ${NAME}.mp3\" with title \"BKS Audio Tools\" sound name \"Glass\"" 2>/dev/null
+                            osascript -e "display notification \"Saved: ${NAME}.mp3\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
                         else
-                            osascript -e 'display dialog "MP3 conversion failed." buttons {"OK"} default button "OK" with title "BKS Audio Tools" with icon caution' 2>/dev/null
+                            osascript -e 'display dialog "MP3 conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
                         fi
                         ;;
 
                     "Convert to Mono")
                         OUTPUT="${DIR}/${NAME}_mono.${EXT}"
-                        osascript -e 'display notification "Converting to mono..." with title "BKS Audio Tools"' 2>/dev/null
+                        osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
                         if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
-                            osascript -e "display notification \"Saved: ${NAME}_mono.${EXT}\" with title \"BKS Audio Tools\" sound name \"Glass\"" 2>/dev/null
+                            osascript -e "display notification \"Saved: ${NAME}_mono.${EXT}\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
                         else
-                            osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "BKS Audio Tools" with icon caution' 2>/dev/null
+                            osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
                         fi
                         ;;
 

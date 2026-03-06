@@ -1,10 +1,12 @@
-# BKS Audio Tools
+# Beat Kitchen Audio Tools
+
+<img src="assets/icon.png" width="128" alt="Beat Kitchen Audio Tools">
 
 A right-click utility for macOS that measures loudness and converts audio files — directly from Finder.
 
 ## What It Does
 
-Right-click any audio or video file and select **BKS Audio Tools** to get:
+Right-click any audio or video file and select **Beat Kitchen Audio Tools** to get:
 
 - **Integrated Loudness** (LUFS) — the overall perceived loudness
 - **True Peak** (dBTP) — the absolute signal peak
@@ -26,7 +28,7 @@ Works on WAV, AIFF, MP3, FLAC, and any format ffmpeg supports — including vide
 Grab the latest `.dmg` from the [Releases page](https://github.com/BeatKitchen/bks-audio-tools/releases).
 
 1. Open the `.dmg`
-2. Double-click `BKS Audio Tools.workflow`
+2. Double-click `Beat Kitchen Audio Tools.workflow`
 3. macOS asks to install — click **Install**
 4. Done
 
@@ -50,7 +52,7 @@ cd bks-audio-tools
 
 1. Right-click any audio or video file in Finder
 2. Go to **Services** (or **Quick Actions** on macOS 13+)
-3. Click **BKS Audio Tools**
+3. Click **Beat Kitchen Audio Tools**
 
 ## Customization
 
@@ -65,7 +67,7 @@ The dialog shows a random quote each time. Edit the `QUOTES` array in `scripts/b
 ## Uninstall
 
 ```bash
-rm -rf ~/Library/Services/BKS\ Audio\ Tools.workflow
+rm -rf ~/Library/Services/Beat\ Kitchen\ Audio\ Tools.workflow
 ```
 
 To also remove the auto-downloaded ffmpeg:
