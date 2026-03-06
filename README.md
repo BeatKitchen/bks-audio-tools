@@ -30,7 +30,7 @@ Grab the latest `.dmg` from the [Releases page](https://github.com/BeatKitchen/b
 1. Open the `.dmg`
 2. Double-click `Beat Kitchen Audio Tools.workflow`
 3. macOS asks to install — click **Install**
-4. Done
+4. A System Preferences window may open — you can close it. The tool is already installed.
 
 ffmpeg is downloaded automatically on first use if you don't already have it installed.
 

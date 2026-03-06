@@ -362,14 +362,15 @@ cat > "$DMGTMP/How to Install.txt" << 'READMETXT'
 Beat Kitchen Audio Tools
 ========================
 
-Double-click "Beat Kitchen Audio Tools.workflow" to install.
+1. Double-click "Beat Kitchen Audio Tools.workflow"
+2. macOS will ask to install — click "Install"
+3. A System Preferences window may open. You can close it.
+   The tool is already installed.
 
-macOS will ask if you want to install it as a Quick Action.
-Click "Install" and you're done.
-
-Usage: right-click any audio or video file in Finder,
-go to Services (or Quick Actions), and select
-"Beat Kitchen Audio Tools".
+Usage:
+  Right-click any audio or video file in Finder →
+  Services (or Quick Actions on macOS 13+) →
+  "Beat Kitchen Audio Tools"
 
 ffmpeg is downloaded automatically on first use
 if you don't already have it.
