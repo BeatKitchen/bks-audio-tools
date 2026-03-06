@@ -326,19 +326,8 @@ if [ -f "$ICON_SRC" ]; then
     iconutil -c icns "$ICONSET" -o "$ICNS_FILE" 2>/dev/null
 
     if [ -f "$ICNS_FILE" ]; then
-        # Set custom Finder icon on the .workflow bundle
-        python3 - "$ICNS_FILE" "${DIST_DIR}/${WFNAME}.workflow" << 'PYICON'
-import sys, os
-try:
-    from AppKit import NSWorkspace, NSImage
-    icon_path = sys.argv[1]
-    target_path = sys.argv[2]
-    image = NSImage.alloc().initWithContentsOfFile_(icon_path)
-    if image:
-        NSWorkspace.sharedWorkspace().setIcon_forFile_options_(image, target_path, 0)
-except Exception:
-    pass
-PYICON
+        # Copy .icns into the workflow bundle as its icon
+        cp "$ICNS_FILE" "${DIST_DIR}/${WFNAME}.workflow/Contents/icon.icns" 2>/dev/null
         rm -f "$ICNS_FILE"
         echo "  Applied custom icon"
     fi
@@ -351,10 +340,12 @@ cd "$DIST_DIR"
 zip -r -q "$ZIPFILE" "${WFNAME}.workflow"
 cd "$SCRIPT_DIR"
 
-# Package as branded DMG with README
+# Package as branded DMG
 DMGFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.dmg"
+DMGRW="${DIST_DIR}/rw.dmg"
 DMGTMP="${DIST_DIR}/dmg-staging"
-rm -rf "$DMGTMP" "$DMGFILE"
+VOLNAME="Beat Kitchen Audio Tools"
+rm -rf "$DMGTMP" "$DMGFILE" "$DMGRW"
 mkdir -p "$DMGTMP"
 cp -R "${DIST_DIR}/${WFNAME}.workflow" "$DMGTMP/"
 
@@ -378,12 +369,126 @@ if you don't already have it.
 beatkitchen.io
 READMETXT
 
-# Create the DMG
-hdiutil create -volname "Beat Kitchen Audio Tools" \
-    -srcfolder "$DMGTMP" \
-    -ov -format UDZO \
-    "$DMGFILE" > /dev/null 2>&1
+# Generate DMG background image using Pillow
+BGIMG="${DIST_DIR}/dmg-bg.png"
+python3 - "$BGIMG" "$ICON_SRC" << 'PYBG'
+import sys, os
+try:
+    from PIL import Image, ImageDraw, ImageFont
 
+    output_path = sys.argv[1]
+    icon_path = sys.argv[2] if len(sys.argv) > 2 else None
+    W, H = 660, 400
+
+    img = Image.new("RGB", (W, H), (28, 28, 33))
+    draw = ImageDraw.Draw(img)
+
+    # Teal accent bar at top
+    draw.rectangle([(0, 0), (W, 3)], fill=(45, 172, 179))
+
+    # Try system fonts, fall back to default
+    def load_font(size, bold=False):
+        names = ["/System/Library/Fonts/HelveticaNeue.ttc",
+                 "/System/Library/Fonts/Helvetica.ttc",
+                 "/Library/Fonts/Arial.ttf"]
+        for n in names:
+            try:
+                return ImageFont.truetype(n, size, index=1 if bold and n.endswith(".ttc") else 0)
+            except Exception:
+                pass
+        return ImageFont.load_default()
+
+    title_font = load_font(24, bold=True)
+    sub_font = load_font(15)
+    small_font = load_font(13)
+
+    draw.text((40, 20), "Beat Kitchen Audio Tools", fill=(255, 255, 255), font=title_font)
+    draw.text((40, 55), "Double-click the workflow to install", fill=(178, 178, 178), font=sub_font)
+    draw.text((W - 140, H - 30), "beatkitchen.io", fill=(102, 102, 102), font=small_font)
+
+    # Draw BKS icon centered
+    if icon_path and os.path.exists(icon_path):
+        icon = Image.open(icon_path).resize((64, 64), Image.LANCZOS)
+        ix = W // 2 - 32
+        iy = H // 2 - 10
+        img.paste(icon, (ix, iy), icon if icon.mode == "RGBA" else None)
+
+    img.save(output_path)
+except Exception as e:
+    print(f"  DMG background skipped: {e}", file=sys.stderr)
+PYBG
+
+# Add background and volume icon to staging
+if [ -f "$BGIMG" ]; then
+    mkdir -p "$DMGTMP/.background"
+    mv "$BGIMG" "$DMGTMP/.background/bg.png"
+fi
+
+if [ -f "$ICON_SRC" ]; then
+    ICONSET_DMG=$(mktemp -d)/dmg.iconset
+    mkdir -p "$ICONSET_DMG"
+    for sz in 16 32 128 256 512; do
+        sips -z $sz $sz "$ICON_SRC" --out "$ICONSET_DMG/icon_${sz}x${sz}.png" > /dev/null 2>&1
+    done
+    for sz in 16 32 128 256; do
+        d=$((sz * 2))
+        sips -z $d $d "$ICON_SRC" --out "$ICONSET_DMG/icon_${sz}x${sz}@2x.png" > /dev/null 2>&1
+    done
+    iconutil -c icns "$ICONSET_DMG" -o "$DMGTMP/.VolumeIcon.icns" 2>/dev/null
+    rm -rf "$(dirname "$ICONSET_DMG")"
+fi
+
+# Detach any stale volume with the same name
+hdiutil detach "/Volumes/${VOLNAME}" > /dev/null 2>&1 || true
+
+# Create read-write DMG (so we can configure Finder view)
+hdiutil create -srcfolder "$DMGTMP" -volname "$VOLNAME" -fs HFS+ \
+    -format UDRW -ov "$DMGRW" > /dev/null 2>&1
+
+# Mount and configure Finder window
+ATTACH_OUT=$(hdiutil attach -readwrite -noverify -noautoopen "$DMGRW" 2>/dev/null)
+DEVICE=$(echo "$ATTACH_OUT" | grep -E '^/dev/' | head -1 | awk '{print $1}')
+MOUNT_POINT=$(echo "$ATTACH_OUT" | grep '/Volumes/' | sed 's/.*\(\/Volumes\/.*\)/\1/' | head -1 | sed 's/[[:space:]]*$//')
+
+if [ -d "$MOUNT_POINT" ]; then
+    # Set custom icon flag on volume
+    SetFile -a C "$MOUNT_POINT" 2>/dev/null || true
+
+    # Configure Finder window layout
+    if [ -f "$MOUNT_POINT/.background/bg.png" ]; then
+        osascript << DMGSCRIPT > /dev/null 2>&1
+tell application "Finder"
+    tell disk "${VOLNAME}"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {100, 100, 760, 500}
+        delay 1
+        set viewOptions to the icon view options of container window
+        set arrangement of viewOptions to not arranged
+        set icon size of viewOptions to 80
+        set background picture of viewOptions to file ".background:bg.png"
+        set position of item "${WFNAME}.workflow" of container window to {220, 200}
+        set position of item "How to Install.txt" of container window to {440, 200}
+        close
+        open
+        delay 1
+        close
+    end tell
+end tell
+DMGSCRIPT
+        echo "  Applied DMG branding"
+    fi
+
+    sync
+    hdiutil detach "$DEVICE" > /dev/null 2>&1
+fi
+
+# Convert to compressed read-only DMG
+hdiutil convert "$DMGRW" -format UDZO -imagekey zlib-level=9 \
+    -o "$DMGFILE" > /dev/null 2>&1
+rm -f "$DMGRW"
 rm -rf "$DMGTMP"
 
 echo ""

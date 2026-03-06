@@ -7,20 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_common.sh"
 # --- end bootstrap ---
 
-# --- BKS quotes — add as many as you want ---
+# --- BKS quotes — add your own and rebuild ---
 QUOTES=(
-    "Keep it up, you are doing great."
-    "Music theory did not ruin me. It made me insufferable."
-    "Your mix is not too loud. Everyone else is too quiet."
-    "Trust your ears, but verify with meters."
-    "Compress your dynamics, not your ambitions."
-    "The best EQ move is the one you almost did not make."
-    "Sidechain everything. Even your feelings."
-    "Loudness is temporary. Good taste is forever."
-    "If it sounds good, it is good. Unless the LUFS say otherwise."
-    "A flat mix is a blank canvas, not a finished painting."
-    "The low end is not muddy. You just have not met it properly yet."
-    "Every great producer started by not knowing what dBTP meant."
+    "Keep it up, you're doing great!"
 )
 QUOTE="${QUOTES[$((RANDOM % ${#QUOTES[@]}))]}"
 
@@ -86,38 +75,36 @@ Loudest Moment         ${PEAK_M} LUFS (M) at ${PEAK_TIME}
         ESCAPED=$(echo "$REPORT" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         RESULT=$(osascript <<APPLESCRIPT
-set theResult to display dialog "${ESCAPED}" buttons {"Copy", "Convert...", "Done"} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
+set theResult to display dialog "${ESCAPED}" buttons {"Copy Report", "More...", "Done"} default button "Done" with title "Beat Kitchen Audio Tools" with icon note
 return button returned of theResult
 APPLESCRIPT
         ) 2>/dev/null
 
         case "$RESULT" in
-            "Copy")
+            "Copy Report")
                 echo "$REPORT" | pbcopy
-                osascript -e 'display notification "Results copied to clipboard" with title "Beat Kitchen Audio Tools"' 2>/dev/null
+                osascript -e 'display notification "Loudness report copied to clipboard" with title "Beat Kitchen Audio Tools"' 2>/dev/null
                 ;;
 
-            "Convert...")
-                # Build available actions based on file type
+            "More...")
+                # Build options list — conversions + utilities
                 ACTIONS=""
+                CAN_MP3=0; CAN_MONO=0
                 if [ "$EXT_LOWER" != "mp3" ]; then
+                    CAN_MP3=1
                     ACTIONS="${ACTIONS}\"Convert to MP3 (320kbps)\", "
                 fi
                 if [ "$CHANNELS" = "stereo" ] || [ "$CHANNELS" = "5.1" ] || [ "$CHANNELS" = "7.1" ]; then
+                    CAN_MONO=1
                     ACTIONS="${ACTIONS}\"Convert to Mono\", "
                 fi
-
-                if [ -z "$ACTIONS" ]; then
-                    osascript -e 'display dialog "No conversions available for this file." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools"' 2>/dev/null
-                    continue
+                if [ $CAN_MP3 -eq 1 ] && [ $CAN_MONO -eq 1 ]; then
+                    ACTIONS="${ACTIONS}\"Both (MP3 + Mono)\", "
                 fi
-
-                # Remove trailing comma+space
-                ACTIONS=$(echo "$ACTIONS" | sed 's/, $//')
+                ACTIONS="${ACTIONS}\"Open beatkitchen.io/tools\", \"Uninstall\""
 
                 CHOICE=$(osascript <<APPLESCRIPT2
-set theChoice to choose from list {${ACTIONS}} with title "Beat Kitchen Audio Tools" with prompt "Select a conversion for:
-${FILENAME}" OK button name "Convert" cancel button name "Back"
+set theChoice to choose from list {${ACTIONS}} with title "Beat Kitchen Audio Tools" with prompt "${FILENAME}" OK button name "OK" cancel button name "Back"
 if theChoice is false then
     return "CANCEL"
 else
@@ -126,31 +113,50 @@ end if
 APPLESCRIPT2
                 ) 2>/dev/null
 
+                DO_MP3=0; DO_MONO=0
                 case "$CHOICE" in
-                    "Convert to MP3 (320kbps)")
-                        OUTPUT="${DIR}/${NAME}.mp3"
-                        osascript -e 'display notification "Converting to MP3..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
-                        if "$FFMPEG" -i "$f" -codec:a libmp3lame -b:a 320k -map a -y "$OUTPUT" 2>/dev/null; then
-                            osascript -e "display notification \"Saved: ${NAME}.mp3\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
-                        else
-                            osascript -e 'display dialog "MP3 conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
-                        fi
-                        ;;
-
-                    "Convert to Mono")
-                        OUTPUT="${DIR}/${NAME}_mono.${EXT}"
-                        osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
-                        if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
-                            osascript -e "display notification \"Saved: ${NAME}_mono.${EXT}\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
-                        else
-                            osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
-                        fi
-                        ;;
-
-                    "CANCEL"|"")
+                    "Convert to MP3 (320kbps)") DO_MP3=1 ;;
+                    "Convert to Mono") DO_MONO=1 ;;
+                    "Both (MP3 + Mono)") DO_MP3=1; DO_MONO=1 ;;
+                    "Open beatkitchen.io/tools")
+                        open "https://beatkitchen.io/ear-candy"
                         continue
                         ;;
+                    "Uninstall")
+                        CONFIRM=$(osascript -e 'display dialog "Remove Beat Kitchen Audio Tools from your right-click menu?" buttons {"Cancel", "Uninstall"} default button "Cancel" with title "Beat Kitchen Audio Tools" with icon caution' 2>&1)
+                        if echo "$CONFIRM" | grep -q "Uninstall"; then
+                            rm -rf "$HOME/Library/Services/Beat Kitchen Audio Tools.workflow"
+                            osascript -e 'display notification "Beat Kitchen Audio Tools has been uninstalled." with title "Beat Kitchen Audio Tools" sound name "Glass"' 2>/dev/null
+                            exit 0
+                        fi
+                        continue
+                        ;;
+                    *) continue ;;
                 esac
+
+                # Run conversions
+                CONVERTED=""
+                if [ $DO_MP3 -eq 1 ]; then
+                    osascript -e 'display notification "Converting to MP3..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
+                    OUTPUT="${DIR}/${NAME}.mp3"
+                    if "$FFMPEG" -i "$f" -codec:a libmp3lame -b:a 320k -map a -y "$OUTPUT" 2>/dev/null; then
+                        CONVERTED="${CONVERTED}${NAME}.mp3  "
+                    else
+                        osascript -e 'display dialog "MP3 conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
+                    fi
+                fi
+                if [ $DO_MONO -eq 1 ]; then
+                    osascript -e 'display notification "Converting to mono..." with title "Beat Kitchen Audio Tools"' 2>/dev/null
+                    OUTPUT="${DIR}/${NAME}_mono.${EXT}"
+                    if "$FFMPEG" -i "$f" -ac 1 -y "$OUTPUT" 2>/dev/null; then
+                        CONVERTED="${CONVERTED}${NAME}_mono.${EXT}"
+                    else
+                        osascript -e 'display dialog "Mono conversion failed." buttons {"OK"} default button "OK" with title "Beat Kitchen Audio Tools" with icon caution' 2>/dev/null
+                    fi
+                fi
+                if [ -n "$CONVERTED" ]; then
+                    osascript -e "display notification \"Saved: ${CONVERTED}\" with title \"Beat Kitchen Audio Tools\" sound name \"Glass\"" 2>/dev/null
+                fi
                 ;;
 
             "Done"|"")
