@@ -63,6 +63,16 @@ cd bks-audio-tools
 2. Go to **Services** (or **Quick Actions** on macOS 13+)
 3. Click **Beat Kitchen Audio Tools**
 
+## Customization
+
+### MP3 bitrate
+
+The default MP3 conversion is 320kbps CBR (the highest quality). To change it:
+
+1. Open `~/Library/Services/Beat Kitchen Audio Tools.workflow` in Automator
+2. Find `-b:a 320k` in the shell script
+3. Replace `320k` with your preferred bitrate (e.g. `192k`, `256k`) or use `-q:a 2` for VBR (~190kbps)
+
 ## Uninstall
 
 ```bash
