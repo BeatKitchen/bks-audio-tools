@@ -413,6 +413,15 @@ Beat Kitchen Audio Tools
 2. Follow the installer prompts
 3. Done — the tool is ready to use
 
+If macOS blocks the installer:
+  Double-click "Open Security Settings" in this window,
+  then click "Open Anyway" next to the blocked installer.
+  This is a one-time step.
+
+  This happens because the installer isn't signed with a
+  paid Apple Developer certificate ($99/year). The tool is
+  fully open source at github.com/BeatKitchen/bks-audio-tools
+
 Usage:
   Right-click any audio or video file in Finder →
   Quick Actions → "Beat Kitchen Audio Tools"
@@ -422,6 +431,18 @@ if you don't already have it.
 
 beatkitchen.io
 READMETXT
+
+# Create .webloc shortcut to Privacy & Security settings (not blocked by Gatekeeper)
+cat > "$DMGTMP/Open Security Settings.webloc" << 'WEBLOC'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>URL</key>
+	<string>x-apple.systempreferences:com.apple.preference.security</string>
+</dict>
+</plist>
+WEBLOC
 
 # Generate DMG background image using Pillow
 BGIMG="${DIST_DIR}/dmg-bg.png"
@@ -457,7 +478,7 @@ try:
     small_font = load_font(13)
 
     draw.text((40, 20), "Beat Kitchen Audio Tools", fill=(255, 255, 255), font=title_font)
-    draw.text((40, 55), "Double-click the installer to get started", fill=(178, 178, 178), font=sub_font)
+    draw.text((40, 55), "Double-click the installer  |  If blocked, open Security Settings", fill=(178, 178, 178), font=sub_font)
     draw.text((W - 140, H - 30), "beatkitchen.io", fill=(102, 102, 102), font=small_font)
 
     # Draw BKS icon centered
@@ -523,8 +544,9 @@ tell application "Finder"
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 80
         set background picture of viewOptions to file ".background:bg.png"
-        set position of item "Beat-Kitchen-Audio-Tools.pkg" of container window to {220, 200}
-        set position of item "How to Install.txt" of container window to {440, 200}
+        set position of item "Beat-Kitchen-Audio-Tools.pkg" of container window to {170, 190}
+        set position of item "Open Security Settings.webloc" of container window to {330, 190}
+        set position of item "How to Install.txt" of container window to {490, 190}
         close
         open
         delay 1
