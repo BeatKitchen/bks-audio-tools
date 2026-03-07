@@ -35,6 +35,14 @@ Grab the latest `.dmg` from the [Releases page](https://github.com/BeatKitchen/b
 
 ffmpeg is downloaded automatically on first use if you don't already have it installed.
 
+### A note about security warnings
+
+macOS may warn that this installer is from an "unidentified developer." This is normal — it means the package isn't signed with a paid Apple Developer ID certificate ($99/year), not that anything is wrong with it.
+
+The tool is open source. You can read every line of code in this repo before installing. The installer places a single Automator workflow in `~/Library/Services/` — it does not install background processes, daemons, or anything that runs when you're not using it.
+
+To proceed past the warning: right-click the `.pkg` and choose **Open**, or go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
 ### From Source
 
 ```bash
