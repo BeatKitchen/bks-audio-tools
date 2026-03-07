@@ -334,34 +334,88 @@ if [ -f "$ICON_SRC" ]; then
     rm -rf "$(dirname "$ICONSET")"
 fi
 
-# Package as zip
+# Package as zip (raw workflow for source installs)
 ZIPFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.zip"
 cd "$DIST_DIR"
 zip -r -q "$ZIPFILE" "${WFNAME}.workflow"
 cd "$SCRIPT_DIR"
 
-# Package as branded DMG
+# --- Build .pkg installer (no Gatekeeper issues on Tahoe+) ---
+PKGFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.pkg"
+PKG_STAGE="${DIST_DIR}/pkg-payload"
+PKG_SCRIPTS="${DIST_DIR}/pkg-scripts"
+rm -rf "$PKG_STAGE" "$PKG_SCRIPTS"
+
+# Stage workflow in temp install location
+mkdir -p "$PKG_STAGE"
+cp -R "${DIST_DIR}/${WFNAME}.workflow" "$PKG_STAGE/"
+
+# Create postinstall script — moves workflow to real user's ~/Library/Services/
+mkdir -p "$PKG_SCRIPTS"
+cat > "$PKG_SCRIPTS/postinstall" << 'POSTINSTALL'
+#!/bin/bash
+# pkg scripts run as root — find the real console user
+CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null)
+if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ]; then
+    CONSOLE_USER=$(ls -l /dev/console | awk '{print $3}')
+fi
+USER_HOME=$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+if [ -z "$USER_HOME" ]; then
+    USER_HOME="/Users/$CONSOLE_USER"
+fi
+
+SERVICES_DIR="$USER_HOME/Library/Services"
+mkdir -p "$SERVICES_DIR"
+
+STAGED="/tmp/bks-audio-tools-stage/Beat Kitchen Audio Tools.workflow"
+if [ -d "$STAGED" ]; then
+    rm -rf "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow"
+    mv "$STAGED" "$SERVICES_DIR/"
+    chown -R "$CONSOLE_USER" "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow"
+    xattr -cr "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow" 2>/dev/null
+fi
+
+rm -rf /tmp/bks-audio-tools-stage
+/System/Library/CoreServices/pbs -update 2>/dev/null
+exit 0
+POSTINSTALL
+chmod +x "$PKG_SCRIPTS/postinstall"
+
+# Build the .pkg
+pkgbuild \
+    --root "$PKG_STAGE" \
+    --identifier "io.beatkitchen.audio-tools" \
+    --version "1.7.0" \
+    --install-location "/tmp/bks-audio-tools-stage" \
+    --scripts "$PKG_SCRIPTS" \
+    "$PKGFILE" > /dev/null 2>&1
+
+rm -rf "$PKG_STAGE" "$PKG_SCRIPTS"
+
+if [ -f "$PKGFILE" ]; then
+    echo "  Built: Beat-Kitchen-Audio-Tools.pkg"
+fi
+
+# --- Package as branded DMG (contains .pkg installer) ---
 DMGFILE="${DIST_DIR}/Beat-Kitchen-Audio-Tools.dmg"
 DMGRW="${DIST_DIR}/rw.dmg"
 DMGTMP="${DIST_DIR}/dmg-staging"
 VOLNAME="Beat Kitchen Audio Tools"
 rm -rf "$DMGTMP" "$DMGFILE" "$DMGRW"
 mkdir -p "$DMGTMP"
-cp -R "${DIST_DIR}/${WFNAME}.workflow" "$DMGTMP/"
+cp "$PKGFILE" "$DMGTMP/"
 
 cat > "$DMGTMP/How to Install.txt" << 'READMETXT'
 Beat Kitchen Audio Tools
 ========================
 
-1. Double-click "Beat Kitchen Audio Tools.workflow"
-2. macOS will ask to install — click "Install"
-3. A System Preferences window may open. You can close it.
-   The tool is already installed.
+1. Double-click "Beat Kitchen Audio Tools.pkg"
+2. Follow the installer prompts
+3. Done — the tool is ready to use
 
 Usage:
   Right-click any audio or video file in Finder →
-  Services (or Quick Actions on macOS 13+) →
-  "Beat Kitchen Audio Tools"
+  Quick Actions → "Beat Kitchen Audio Tools"
 
 ffmpeg is downloaded automatically on first use
 if you don't already have it.
@@ -403,7 +457,7 @@ try:
     small_font = load_font(13)
 
     draw.text((40, 20), "Beat Kitchen Audio Tools", fill=(255, 255, 255), font=title_font)
-    draw.text((40, 55), "Double-click the workflow to install", fill=(178, 178, 178), font=sub_font)
+    draw.text((40, 55), "Double-click the installer to get started", fill=(178, 178, 178), font=sub_font)
     draw.text((W - 140, H - 30), "beatkitchen.io", fill=(102, 102, 102), font=small_font)
 
     # Draw BKS icon centered
@@ -469,7 +523,7 @@ tell application "Finder"
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 80
         set background picture of viewOptions to file ".background:bg.png"
-        set position of item "${WFNAME}.workflow" of container window to {220, 200}
+        set position of item "Beat-Kitchen-Audio-Tools.pkg" of container window to {220, 200}
         set position of item "How to Install.txt" of container window to {440, 200}
         close
         open
@@ -495,8 +549,11 @@ echo ""
 echo "Done."
 echo "  Workflow: dist/${WFNAME}.workflow"
 echo "  Zip:     dist/Beat-Kitchen-Audio-Tools.zip ($(du -h "$ZIPFILE" | awk '{print $1}'))"
+if [ -f "$PKGFILE" ]; then
+    echo "  Pkg:     dist/Beat-Kitchen-Audio-Tools.pkg ($(du -h "$PKGFILE" | awk '{print $1}'))"
+fi
 if [ -f "$DMGFILE" ]; then
     echo "  DMG:     dist/Beat-Kitchen-Audio-Tools.dmg ($(du -h "$DMGFILE" | awk '{print $1}'))"
 fi
 echo ""
-echo "Upload either package to beatkitchen.io/tools"
+echo "Upload .dmg or .pkg to beatkitchen.io/tools"

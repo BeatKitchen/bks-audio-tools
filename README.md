@@ -18,6 +18,7 @@ Results appear in a dialog with a **Copy** button for pasting into notes or a se
 The **Convert** menu offers:
 - **Convert to MP3** (320kbps) — saves alongside the original
 - **Stereo to Mono** — saves as `filename_mono.ext` alongside the original
+- **Normalize** — EBU R128 loudness normalization to a target (presets for -14, -16, -23 LUFS or custom). Saves as `filename_-14LUFS.ext`
 
 Works on WAV, AIFF, MP3, FLAC, and any format ffmpeg supports — including video files (MP4, MOV, etc.).
 
@@ -28,9 +29,9 @@ Works on WAV, AIFF, MP3, FLAC, and any format ffmpeg supports — including vide
 Grab the latest `.dmg` from the [Releases page](https://github.com/BeatKitchen/bks-audio-tools/releases).
 
 1. Open the `.dmg`
-2. Double-click `Beat Kitchen Audio Tools.workflow`
-3. macOS asks to install — click **Install**
-4. A System Preferences window may open — you can close it. The tool is already installed.
+2. Double-click `Beat Kitchen Audio Tools.pkg`
+3. Follow the installer prompts
+4. Done — the tool is ready to use
 
 ffmpeg is downloaded automatically on first use if you don't already have it installed.
 
@@ -53,16 +54,6 @@ cd bks-audio-tools
 1. Right-click any audio or video file in Finder
 2. Go to **Services** (or **Quick Actions** on macOS 13+)
 3. Click **Beat Kitchen Audio Tools**
-
-## Customization
-
-### Quotes
-
-The dialog shows a random quote each time. Edit the `QUOTES` array in `scripts/bks-audio-tools.sh` to add your own, then rebuild:
-
-```bash
-./build.sh && ./install.sh
-```
 
 ## Uninstall
 

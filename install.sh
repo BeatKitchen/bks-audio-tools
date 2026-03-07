@@ -51,6 +51,8 @@ for wf in "$DIST_DIR"/*.workflow; do
     # Remove old version if present
     rm -rf "${SERVICES_DIR}/${WF_NAME}"
     cp -R "$wf" "$SERVICES_DIR/"
+    # Strip quarantine attribute (Gatekeeper blocks unsigned workflows on Tahoe+)
+    xattr -cr "${SERVICES_DIR}/${WF_NAME}" 2>/dev/null || true
     echo "  Installed: $WF_NAME"
     INSTALLED=$((INSTALLED + 1))
 done
