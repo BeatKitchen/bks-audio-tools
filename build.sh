@@ -7,7 +7,29 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 SCRIPTS_DIR="${SCRIPT_DIR}/scripts"
 
-echo "Building BKS Audio Quick Actions..."
+# Read version from VERSION file (single source of truth).
+VERSION=$(cat "${SCRIPT_DIR}/VERSION" 2>/dev/null | tr -d '[:space:]')
+if [ -z "$VERSION" ]; then
+    echo "ERROR: VERSION file is missing or empty at ${SCRIPT_DIR}/VERSION"
+    exit 1
+fi
+
+# Signing + notarization flags. Pass --no-sign for an unsigned .pkg (local
+# iteration) or --no-notarize to sign-but-skip notarization (e.g. when
+# Apple's notary queue is stuck — see memory/feedback_notarization_strategy.md).
+SIGN=1
+NOTARIZE=1
+for arg in "$@"; do
+    case "$arg" in
+        --no-sign) SIGN=0; NOTARIZE=0 ;;
+        --no-notarize) NOTARIZE=0 ;;
+    esac
+done
+APP_ID="Developer ID Application: NATHAN HOWARD ROSENBERG (8A46Q9Y5Y4)"
+INSTALLER_ID="Developer ID Installer: NATHAN HOWARD ROSENBERG (8A46Q9Y5Y4)"
+NOTARY_PROFILE="BeatKitchen"
+
+echo "Building BKS Audio Quick Actions v${VERSION}..."
 echo ""
 
 # Clean and create dist directory
@@ -54,6 +76,9 @@ create_workflow() {
         echo "$line" >> "$TMPMERGE"
     done < "$SCRIPT_FILE"
 
+    # Bake the version into the merged script
+    sed -i "" "s/__BKS_VERSION__/${VERSION}/g" "$TMPMERGE"
+
     # XML-escape the merged script
     local ESCAPED_SCRIPT
     ESCAPED_SCRIPT=$(cat "$TMPMERGE" | xml_escape)
@@ -65,6 +90,12 @@ create_workflow() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleShortVersionString</key>
+	<string>${VERSION}</string>
+	<key>CFBundleVersion</key>
+	<string>${VERSION}</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.beatkitchen.audio-tools</string>
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -381,19 +412,73 @@ exit 0
 POSTINSTALL
 chmod +x "$PKG_SCRIPTS/postinstall"
 
-# Build the .pkg
+# Build the unsigned component .pkg
+COMPONENT_PKG="${DIST_DIR}/component.pkg"
 pkgbuild \
     --root "$PKG_STAGE" \
     --identifier "io.beatkitchen.audio-tools" \
-    --version "1.7.0" \
+    --version "$VERSION" \
     --install-location "/tmp/bks-audio-tools-stage" \
     --scripts "$PKG_SCRIPTS" \
-    "$PKGFILE" > /dev/null 2>&1
+    "$COMPONENT_PKG" > /dev/null 2>&1
 
-rm -rf "$PKG_STAGE" "$PKG_SCRIPTS"
+# Wrap in a productbuild distribution package so we can sign + show a proper version.
+DIST_XML="${DIST_DIR}/distribution.xml"
+cat > "$DIST_XML" << DISTEOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Beat Kitchen Audio Tools</title>
+    <options customize="never" require-scripts="false"/>
+    <domains enable_localSystem="false" enable_currentUserHome="true"/>
+    <pkg-ref id="io.beatkitchen.audio-tools" version="${VERSION}" auth="root">component.pkg</pkg-ref>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default" title="Beat Kitchen Audio Tools">
+        <pkg-ref id="io.beatkitchen.audio-tools"/>
+    </choice>
+</installer-gui-script>
+DISTEOF
+
+PRODUCTBUILD_ARGS=(
+    --distribution "$DIST_XML"
+    --package-path "$DIST_DIR"
+    --version "$VERSION"
+)
+if [ $SIGN -eq 1 ]; then
+    PRODUCTBUILD_ARGS+=(--sign "$INSTALLER_ID" --timestamp)
+fi
+productbuild "${PRODUCTBUILD_ARGS[@]}" "$PKGFILE" > /dev/null 2>&1
+
+rm -rf "$PKG_STAGE" "$PKG_SCRIPTS" "$COMPONENT_PKG" "$DIST_XML"
 
 if [ -f "$PKGFILE" ]; then
-    echo "  Built: Beat-Kitchen-Audio-Tools.pkg"
+    if [ $SIGN -eq 1 ]; then
+        echo "  Built: Beat-Kitchen-Audio-Tools.pkg (signed v${VERSION})"
+    else
+        echo "  Built: Beat-Kitchen-Audio-Tools.pkg (unsigned v${VERSION})"
+    fi
+fi
+
+# Notarize + staple. Submits to Apple's notary service via the BeatKitchen
+# keychain profile (set up via xcrun notarytool store-credentials — see
+# docs/PLUGIN_OPERATIONS.md). --wait blocks until Apple returns a verdict;
+# typical wait is 2–15 minutes but can be hours when their queue is slow.
+if [ $NOTARIZE -eq 1 ]; then
+    echo ""
+    echo "  Submitting to Apple notary service (this can take several minutes)..."
+    if xcrun notarytool submit "$PKGFILE" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait 2>&1 | tee /tmp/bks-notarize.log | grep -q "status: Accepted"; then
+        echo "  Notarization: Accepted"
+        xcrun stapler staple "$PKGFILE" > /dev/null 2>&1 && echo "  Stapled ticket to .pkg"
+        spctl --assess --type install -v "$PKGFILE" 2>&1 | sed 's/^/   /' || true
+    else
+        echo "  Notarization did not complete cleanly — see /tmp/bks-notarize.log"
+        echo "  The .pkg is signed but UNSTAPLED. Users will hit Gatekeeper on first launch."
+        SUB_ID=$(grep -m1 -oE "id: [a-f0-9-]{36}" /tmp/bks-notarize.log | awk '{print $2}')
+        [ -n "$SUB_ID" ] && echo "  Submission ID: $SUB_ID  →  xcrun notarytool log $SUB_ID --keychain-profile $NOTARY_PROFILE"
+    fi
 fi
 
 # --- Package as branded DMG (contains .pkg installer) ---
