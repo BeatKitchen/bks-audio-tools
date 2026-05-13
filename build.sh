@@ -398,15 +398,34 @@ fi
 SERVICES_DIR="$USER_HOME/Library/Services"
 mkdir -p "$SERVICES_DIR"
 
-STAGED="/tmp/bks-audio-tools-stage/Beat Kitchen Audio Tools.workflow"
-if [ -d "$STAGED" ]; then
+# The Distribution restricts this pkg to the user-home domain. When the GUI
+# installer runs in that mode, PackageKit sandboxes our absolute
+# install-location ("/tmp/bks-audio-tools-stage") under $HOME/private/tmp/
+# instead of the real /tmp. Check both locations so the GUI path and the
+# `sudo installer -target /` path both work.
+STAGE_NAME="bks-audio-tools-stage/Beat Kitchen Audio Tools.workflow"
+STAGED=""
+for CANDIDATE in \
+    "/tmp/$STAGE_NAME" \
+    "$USER_HOME/private/tmp/$STAGE_NAME" \
+    "$USER_HOME/tmp/$STAGE_NAME"; do
+    if [ -d "$CANDIDATE" ]; then
+        STAGED="$CANDIDATE"
+        break
+    fi
+done
+
+if [ -n "$STAGED" ]; then
     rm -rf "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow"
     mv "$STAGED" "$SERVICES_DIR/"
     chown -R "$CONSOLE_USER" "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow"
     xattr -cr "$SERVICES_DIR/Beat Kitchen Audio Tools.workflow" 2>/dev/null
 fi
 
-rm -rf /tmp/bks-audio-tools-stage
+rm -rf "/tmp/bks-audio-tools-stage" \
+       "$USER_HOME/private/tmp/bks-audio-tools-stage" \
+       "$USER_HOME/tmp/bks-audio-tools-stage"
+rmdir "$USER_HOME/private/tmp" "$USER_HOME/private" 2>/dev/null || true
 /System/Library/CoreServices/pbs -update 2>/dev/null
 exit 0
 POSTINSTALL
