@@ -12,6 +12,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_common.sh"
 # --- end bootstrap ---
 
+# Force a dataless APFS placeholder to materialize before handing it to ffmpeg.
+# Cloud providers (iCloud Drive, OneDrive, Dropbox on-demand) leave files as
+# 0-byte stubs with the "dataless" flag. Services-launched scripts often lack
+# the TCC permission ffmpeg needs to trigger materialize-on-open inside the
+# kernel, and we get EDEADLK ("Resource deadlock avoided"). A normal read from
+# this script's context is enough to pull the bytes down where we *do* have
+# permission.
+materialize_if_dataless() {
+    local path="$1"
+    [ -z "$path" ] && return 0
+    if /bin/ls -lO "$path" 2>/dev/null | /usr/bin/head -1 | /usr/bin/grep -q "dataless"; then
+        /bin/cat "$path" > /dev/null 2>&1 || true
+    fi
+}
+
 # --- Uninstall ---
 do_uninstall() {
     CONFIRM=$(osascript 2>/dev/null <<APPLESCRIPT
@@ -123,10 +138,24 @@ for f in "$@"; do
 
     osascript -e "display notification \"Analyzing ${FILENAME}...\" with title \"${BKS_TITLE_VER}\"" 2>/dev/null
 
+    # Pull bytes down if this is a cloud placeholder before ffmpeg tries to.
+    materialize_if_dataless "$f"
+
     RAW=$("$FFMPEG" -i "$f" -af ebur128=peak=true -f null - 2>&1)
 
     if ! echo "$RAW" | grep -q "Integrated loudness:"; then
-        osascript -e "display dialog \"No audio stream found in:\\n${FILENAME}\" buttons {\"OK\"} default button \"OK\" with title \"${BKS_TITLE_VER}\" with icon stop"
+        # Classify the failure so the user sees something actionable instead
+        # of "No audio stream" for every kind of read error.
+        if echo "$RAW" | grep -q "Resource deadlock avoided\|Operation not permitted\|Permission denied"; then
+            ERR_MSG="Couldn't read this file from the right-click context:\\n${FILENAME}\\n\\nIt may be a cloud placeholder (iCloud / OneDrive / Dropbox on-demand). Open it once in Finder, or run \\\"cat\\\" on it in Terminal to force a download, then try again."
+        elif echo "$RAW" | grep -q "No such file or directory"; then
+            ERR_MSG="File not found:\\n${FILENAME}"
+        elif echo "$RAW" | grep -q "Invalid data found\|moov atom not found\|Invalid argument"; then
+            ERR_MSG="ffmpeg couldn't parse this as audio:\\n${FILENAME}"
+        else
+            ERR_MSG="No audio stream found in:\\n${FILENAME}"
+        fi
+        osascript -e "display dialog \"${ERR_MSG}\" buttons {\"OK\"} default button \"OK\" with title \"${BKS_TITLE_VER}\" with icon stop"
         continue
     fi
 
